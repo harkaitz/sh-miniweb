@@ -1,0 +1,397 @@
+#!/bin/sh -e
+#L:
+#L:  MIT License
+#L:  
+#l:  Bug reports, feature requests to gemini|https://harkadev.com/oss
+#l:  Copyright (c) 2022 Harkaitz Agirre, harkaitz.aguirre@gmail.com
+#L:
+#L:  Permission is hereby granted, free of charge, to any person obtaining
+#L:  a copy of this software and associated documentation files (the
+#L:  "Software"), to deal in the Software without restriction, including
+#L:  without limitation the rights to use, copy, modify, merge, publish,
+#L:  distribute, sublicense, and/or sell copies of the Software, and to
+#L:  permit persons to whom the Software is furnished to do so, subject to
+#L:  the following conditions:
+#L:
+#L:  The above copyright notice and this permission notice shall be
+#L:  included in all copies or substantial portions of the Software.
+#L:
+#L:  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+#L:  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+#L:  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+#L:  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+#L:  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+#L:  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+#L:  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+##:
+#h: Usage: $0 ...
+#h:
+#h: This script helps performing two tasks:
+#h:
+#h: 1.- Downloads, builds and installs three web services and configures
+#h:     them to serve from the same directory `/srv/miniweb`
+#h:     - `Gopher RFC-1436 TCP 70`  : Geomyidae
+#h:     - `Gemini TLS 1965`         : gmnisrv
+#h:     - `HTTP TCP 127.0.0.1:8081` : quark
+#h:
+#h: 2.- Gets the files from your *personal webpage directory* and
+#h:     generates html files from `.gmi`, `.gph`, `.md` files.
+#h:
+#h: ... show              : Show configuration.
+#h:
+#h: ... gopher-i [DOMAIN] : Build/Install/Setup Geomyidae. [gopher]
+#h: ... gemini-i [DOMAIN] : Build/Install/Setup gmnisrv.   [gemini]
+#h: ... ht8081-i          : Build/Install/Setup quark.     [ht8081]
+#h: ... enable            : Enable the installed services.
+#h: ... disable           : Disable the installed services.
+#h:
+#h: ... upload            : Upload changes to the site.
+#h: ... help-gph          : Print reference for `index.gph` files.
+#h: ... help-gmi          : Print reference for `FILE.gmi` files.
+#h:
+#h: ... hsh SSH DOMAIN    : Install and enable the three services in
+#h:                         remote machine.
+#h:
+#h: (Important) This script was only tested in `VOID Linux`.
+. hmain
+. hterm
+. hpkg
+. hlog
+. vrun
+. vcd
+. hfile
+. getsrc-git
+miniweb() {
+    local cmd="$1"
+    shift
+    case "${cmd}" in
+        show)       miniweb_show_variables ;;
+        gopher-i)   geomyidae_install "$@" ;;
+        gemini-i)   gmnisrv_install   "$@" ;;
+        ht8081-i)   quark_install     "$@" ;;
+        upload)     miniweb_upload         ;;
+        enable)     miniweb_enable         ;;
+        disable)    miniweb_disable        ;;
+        help-gph)   help_gph               ;;
+        help-gmi)   help_gmi               ;;
+        open)       xdg-open gemini://localhost &
+                    xdg-open gopher://localhost &
+                    xdg-open http://localhost:8081 &
+                    ;;
+        hsh)
+            hlog errif "Please specify a hostname" test ! -n "${1}"
+            hlog errif "Please specify a domain" test ! -n "${2}"
+            hsh -r "${1}" -i "miniweb" "$0"
+            ssh "${1}" /usr/local/bin/miniweb gopher-i "${2}"
+            ssh "${1}" /usr/local/bin/miniweb gemini-i "${2}"
+            ssh "${1}" /usr/local/bin/miniweb ht8081-i
+            ssh "${1}" /usr/local/bin/miniweb enable
+            ;;
+            
+        *) hlog error "Invalid argument: ${cmd}"; return 1;;
+    esac
+}
+miniweb_show_variables() {
+    hterm vars                   \
+          MINIWEB_PERSONAL_SITE  \
+          MINIWEB_PERSONAL_SKEL  \
+          MINIWEB_PERSONAL_BUILD \
+          MINIWEB_TMPDIR         \
+          MINIWEB_PUBDIR
+}
+miniweb_calc_variables() {
+    MINIWEB_PERSONAL_SITE="${MINIWEB_PERSONAL_SITE:-${HOME}/Documents/gopher}"
+    MINIWEB_PERSONAL_SKEL="${MINIWEB_PERSONAL_SKEL:-}"
+    MINIWEB_PERSONAL_BUILD="${MINIWEB_PERSONAL_BUILD:-}"
+    MINIWEB_TMPDIR="/tmp/miniweb-tmpdir"
+    MINIWEB_PUBDIR="/srv/miniweb"
+    MINIWEB_PUBSSH="${MINIWEB_PUBSSH}"
+    MINIWEB_PWD="`pwd`"
+}
+
+
+## -----------------------------------------------------------------------------
+miniweb_tar_install() {
+    sudo mkdir -p "${MINIWEB_PUBDIR}"
+    vcd + "${MINIWEB_TMPDIR}"
+    if test -n "${MINIWEB_PUBSSH}";then
+        hlog info "Uploading to ${MINIWEB_PUBSSH}:${MINIWEB_PUBDIR} ..."
+        tar c . | ssh "${MINIWEB_PUBSSH}" sudo tar xf - -C "${MINIWEB_PUBDIR}"
+    else
+        hlog info "Publishing locally ..."
+        tar c . | sudo tar xf - -C "${MINIWEB_PUBDIR}"
+    fi
+    vcd - "${MINIWEB_PWD}"
+}
+miniweb_tar_collect() {
+    local pwd="`pwd`"
+    ## Check the source is right.
+    if test ! -d "${MINIWEB_PERSONAL_SITE}";then
+        hlog error "Directory MINIWEB_PERSONAL_SITE=${MINIWEB_PERSONAL_SITE} does not exist."
+        return 1
+    fi
+    ## Execute script.
+    if test -n "${MINIWEB_PERSONAL_BUILD}";then
+        eval "${MINIWEB_PERSONAL_BUILD}"
+    fi
+    
+    ## Copy everything to a temporary directory.
+    rm -rf "${MINIWEB_TMPDIR}"
+    cp -r "${MINIWEB_PERSONAL_SITE}" "${MINIWEB_TMPDIR}"
+    ## Enter temporary directory.
+    vcd + "${MINIWEB_TMPDIR}"
+    ## Create the `index.gmi` out of `index.gph`.
+    find . -iname index.gph | while read f;do
+        local t="`dirname "${f}"`/index.gmi"
+        hlog info "Creating ${t} ..."
+        sed '
+        1s|^\([^#]\)|## \1|
+        s/^t//
+        s/^\[[09Ig]|\(.*\)|\(.*\)|server|port\]/=> \2 \1/
+        s/^\[1|\(.*\)|\(.*\)|server|port\]/=> \2\/ \1/
+        s/^\[h|\(.*\)|URL:\(.*\)|server|port\]/=> \2 \1/
+        ' "${f}" > "${t}"
+    done
+    ## Create the `index.html` from `index.gmi`.
+    if test ! -n "${MINIWEB_PERSONAL_SKEL}";then
+        hlog warning "Variable MINIWEB_PERSONAL_SKEL not defined."
+    elif ! which "mht" >/dev/null 2>&1;then
+        hlog error "Program 'mht' not found."
+        return 1
+    elif ! which "pandoc" >/dev/null 2>&1;then
+        hlog error "Program 'pandoc' not found."
+        return 1
+    else
+        find . -iregex ".*\.gmi" | while read f;do
+            local t="`echo "${f}" | sed 's|\.gmi$|\.html|'`"
+            local p="`echo "${t}" | sed 's|/index\.html$|/|'`"
+            hlog info "Creating ${t} ..."
+            sed '
+            s|^ *=>  *\([^ ][^ ]*\)\.gmi  *\(.*\)|+ [\2](\1.html)|
+            s|^ *=>  *\([^ ][^ ]*\.jpg\)  *\(.*\)|+ [\2](\1) (Photo)|
+            s|^ *=>  *\([^ ][^ ]*\)  *\(.*\)|+ [\2](\1)|
+            ' "${f}" \
+                | pandoc -f markdown -t html \
+                | mht -s "${MINIWEB_PERSONAL_SKEL}" -t LOC="${p}" > "${t}"
+        done
+    fi
+    vcd - "${MINIWEB_PWD}"
+}
+miniweb_upload() {
+    miniweb_tar_collect
+    miniweb_tar_install
+}
+miniweb_enable() {
+    local sleep=n
+    if hpkg -c @void;then
+        for s in gopher gemini ht8081;do
+            if test -e "/etc/sv/${s}" && test ! -e "/etc/runit/runsvdir/default/${s}";then
+                vrun sudo ln -s "/etc/sv/${s}" "/etc/runit/runsvdir/default/${s}"
+                hlog info ""
+                local sleep=y
+            fi
+        done
+        if test @"${sleep}" = @"y";then
+            vrun sleep 3
+        fi
+        for s in gopher gemini ht8081;do
+            if test -e "/etc/runit/runsvdir/default/${s}";then
+                vrun sudo sv status "${s}" || true
+                hlog info ""
+            fi
+        done
+    else
+        hlog error "Only Void Linux is supported."
+        return 1
+    fi
+}
+miniweb_disable() {
+    if hpkg -c @void;then
+        for s in gopher gemini ht8081;do
+            if test -e "/etc/runit/runsvdir/default/${s}";then
+                vrun sudo sv down "${s}"
+                vrun sudo rm -f "/etc/runit/runsvdir/default/${s}"
+                hlog info ""
+            fi
+        done
+    else
+        hlog error "Only Void Linux is supported."
+        return 1
+    fi
+}
+
+
+## -----------------------------------------------------------------------------
+geomyidae_install() {
+    local domain="$1" args=
+    ## Add domain if specified.
+    if test -n "${domain}";then
+        local args="-h ${domain}"
+    fi
+    ## Download and build geomyiade.
+    if test ! -f /usr/local/sbin/geomyidae;then
+        hlog info "Downloading, building and installing 'geomyidae' ..."
+        hpkg -w "/usr/include/tls.h" -w "git" -w "make" -w "gcc" -i %xbps "libtls-devel" "git" "make" "gcc"
+        local src="`getsrc_git "git://r-36.net/geomyidae"`"
+        vcd + "${src}"
+        make
+        sudo make install
+        vcd - "${MINIWEB_PWD}"
+    fi
+    ## Create miniweb directory.
+    hlog info "Creating ${MINIWEB_PUBDIR} ..."
+    sudo mkdir -p "${MINIWEB_PUBDIR}"
+    ## Install service.
+    if test -d /etc/sv;then
+        hlog info "Creating /etc/sv/gopher/run ..."
+        sudo mkdir -p /etc/sv/gopher
+        hfile wrapper sudo /etc/sv/gopher/run <<-EOF
+	#!/bin/sh
+	exec /usr/local/sbin/geomyidae -d ${args} -b "${MINIWEB_PUBDIR}"
+	EOF
+    fi
+}
+gmnisrv_install() {
+    local domain="$1"
+    # (No) gmid : Too much dependencies.
+    ## Download and build gmnisrv.
+    if test ! -f /usr/local/bin/gmnisrv;then
+        hlog info "Downloading, building and installing 'gmnisrv' ..."
+        hpkg -w "git"                        \
+             -w "make"                       \
+             -w "gcc"                        \
+             -w "/usr/include/openssl/ssl.h" \
+             -w "scdoc"                      \
+             -w "pkg-config"                 \
+             -w "/etc/mime.types"            \
+             -i                              \
+             %xbps "git" "make" "gcc" "openssl-devel" "scdoc" "pkg-config" "mime-types"
+        local src="`getsrc_git "https://git.sr.ht/~sircmpwn/gmnisrv"`"
+        vcd + "${src}"
+        rm -rf build
+        mkdir -p build
+        cd build
+        ../configure --prefix=/usr/local
+        make
+        sudo make install
+        vcd - "${MINIWEB_PWD}"
+    fi
+    ## Create gemini certificates directory.
+    hlog info "Creating /var/lib/gemini/certs/ ..."
+    sudo mkdir -p "/var/lib/gemini/certs"
+    ## Create configuration file.
+    if test ! -f /etc/gmnisrv.ini;then
+        hlog info "Creating /etc/gmnisrv.ini ..."
+        hfile create sudo /etc/gmnisrv.ini <<-EOF
+	listen=0.0.0.0:1965 [::]:1965
+	[:tls]
+	store=/var/lib/gemini/certs
+	organization=gemini
+	EOF
+    fi
+    ## Install service.
+    if test -d /etc/sv;then
+        hlog info "Creating /etc/sv/gemini/run ..."
+        sudo mkdir -p /etc/sv/gemini
+        hfile wrapper sudo /etc/sv/gemini/run <<-EOF
+	#!/bin/sh
+	exec /usr/local/bin/gmnisrv -C /etc/gmnisrv.ini
+	EOF
+    fi
+    ## Create miniweb directory.
+    hlog info "Creating ${MINIWEB_PUBDIR} ..."
+    sudo mkdir -p "${MINIWEB_PUBDIR}"
+    ## Create gemini.
+    hlog info "Adding to /etc/gmnisrv.ini [localhost]->[${MINIWEB_PUBDIR}] ..."
+    hfile fadd sudo /etc/gmnisrv.ini gopher <<-EOF
+	[localhost]
+	root=${MINIWEB_PUBDIR}
+	[`uname -n`]
+	root=${MINIWEB_PUBDIR}
+	EOF
+    if test -n "${domain}";then
+        hfile fadd sudo /etc/gmnisrv.ini domain <<-EOF
+	[${domain}]
+	root=${MINIWEB_PUBDIR}
+	EOF
+    fi
+}
+quark_install() {
+    ## Download and build quark.
+    if test ! -f /usr/local/bin/quark;then
+        hlog info "Building quark ..."
+        hpkg -w "git"                        \
+             -w "make"                       \
+             -w "gcc"                        \
+             -w "/usr/include/openssl/ssl.h" \
+             -w "scdoc"                      \
+             -w "pkg-config"                 \
+             -i                              \
+             %xbps "git" "make" "gcc" "openssl-devel" "scdoc" "pkg-config"
+        local src="`getsrc_git "https://git.suckless.org/quark"`"
+        vcd + "${src}"
+        make
+        sudo make install
+        vcd - "${MINIWEB_PWD}"
+    fi
+    ## Create miniweb directory.
+    hlog info "Creating ${MINIWEB_PUBDIR} ..."
+    sudo mkdir -p "${MINIWEB_PUBDIR}"
+    ## Install service.
+    if test -d /etc/sv;then
+        hlog info "Creating /etc/sv/ht8081/run ..."
+        sudo mkdir -p /etc/sv/ht8081
+        hfile wrapper sudo /etc/sv/ht8081/run <<-EOF
+	#!/bin/sh
+	exec /usr/local/bin/quark -p 8081 -h 127.0.0.1 -d ${MINIWEB_PUBDIR}
+	EOF
+    fi
+}
+
+## -----------------------------------------------------------------------------
+help_gph() {
+    cat <<-EOF
+	1 comment
+	2 tcomment
+	3 [1|R-36|/|server|port]
+	4 [0|file - comment|/file.txt|server|port]
+	5 [h|http://www.heise.de|URL:http://www.heise.de|server|port]
+	6 [0|some \| escape and [ special characters ] test|error|server|port]
+	7 [9|binary data file|/file.dat|server|port]
+	8 [|empty type||server|port]
+	9 some	invalid line
+	EOF
+}
+help_gmi() {
+    cat <<-EOF
+	# Gemini text format.
+	
+	Mime: text/gemini
+	Suffix: .gmi
+	
+	## Rationale:
+
+	- Mime: text/gemini
+	- Suffix: .gmi
+	- Only one link per line (Like Gopher, encouraging list like structure).
+	- Charset parameter from RFC 2046, default UTF-8.
+	- Extra mime parameter, "lang": "text/gemini; lang=en,fr"
+	- A line's type can be determined by the first 3 bytes.
+
+	## Line types (are 7):
+	
+	- Text lines           : 
+        - Link lines           : =>[<spaces>]<url>[<whitespace><text>]
+	- Toogle lines         : \`\`\`
+	- Heading lines        : #,##,###
+	- Unordered list items : *
+	- Quote lines          : >
+	EOF
+}
+
+
+## -----------------------------------------------------------------------------
+miniweb_calc_variables
+hmain -f "miniweb" miniweb "$@"
+
+
