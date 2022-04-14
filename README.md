@@ -4,9 +4,9 @@ Personal website maintenance script.
 
 ## Requirements.
 
-- VOID Linux.
-- sh-hutil.
-- sh-getsrc.
+- VOID Linux - Any help porting this to other distros will be apreciated.
+- [sh-hutil](https://github.com/harkaitz/sh-hutil) - Utility library for shell scripts.
+- [sh-getsrc](https://github.com/harkaitz/sh-getsrc) - Proper source code downloading for shell scripts.
 
 ## Help
 
