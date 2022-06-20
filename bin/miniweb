@@ -84,7 +84,10 @@ miniweb_show_variables() {
           MINIWEB_PERSONAL_SKEL  \
           MINIWEB_PERSONAL_BUILD \
           MINIWEB_TMPDIR         \
-          MINIWEB_PUBDIR
+          MINIWEB_PUBDIR         \
+          MINIWEB_PUBSSH         \
+          MINIWEB_HTTP_BIND      \
+          MINIWEB_PWD
 }
 miniweb_calc_variables() {
     MINIWEB_PERSONAL_SITE="${MINIWEB_PERSONAL_SITE:-${HOME}/Documents/gopher}"
@@ -93,6 +96,7 @@ miniweb_calc_variables() {
     MINIWEB_TMPDIR="/tmp/miniweb-tmpdir"
     MINIWEB_PUBDIR="/srv/miniweb"
     MINIWEB_PUBSSH="${MINIWEB_PUBSSH}"
+    MINIWEB_HTTP_BIND="${MINIWEB_HTTP_BIND:-127.0.0.1}"
     MINIWEB_PWD="`pwd`"
 }
 
@@ -306,11 +310,11 @@ quark_install() {
     ## Install service.
     if test -d /etc/sv;then
         hlog info "/etc/sv/ht8081/run: Creating service ..."
-        hlog info "/etc/sv/ht8081/run: 127.0.0.1:8081->${MINIWEB_PUBDIR}"
+        hlog info "/etc/sv/ht8081/run: ${MINIWEB_HTTP_BIND}:8081->${MINIWEB_PUBDIR}"
         sudo mkdir -p /etc/sv/ht8081
         hfile wrapper sudo /etc/sv/ht8081/run <<-EOF
 	#!/bin/sh
-	exec /usr/local/bin/quark -p 8081 -h 127.0.0.1 -d ${MINIWEB_PUBDIR}
+	exec /usr/local/bin/quark -p 8081 -h ${MINIWEB_HTTP_BIND} -d ${MINIWEB_PUBDIR}
 	EOF
     fi
 }
