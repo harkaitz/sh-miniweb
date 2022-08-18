@@ -28,11 +28,11 @@
 #h:
 #h: This script helps performing two tasks:
 #h:
-#h: 1.- Downloads, builds and installs three web services and configures
-#h:     them to serve from the same directory `/srv/miniweb`
-#h:     - `Gopher RFC-1436 TCP 70`  : Geomyidae : xdg-open gemini://localhost
-#h:     - `Gemini TLS 1965`         : gmnisrv   : xdg-open gopher://localhost
-#h:     - `HTTP TCP 127.0.0.1:8081` : quark     : xdg-open http://localhost:8081
+#h: 1.- Downloads, builds and installs three web services and
+#h:     configures them to serve from the same directory.
+#h:     - `Gopher RFC-1436 TCP 70`  : Geomyidae
+#h:     - `Gemini TLS 1965`         : gmnisrv
+#h:     - `HTTP TCP 127.0.0.1:8081` : quark
 #h:
 #h: 2.- Gets the files from your *personal webpage directory* and
 #h:     generates html files from `.gmi`, `.gph`, `.md` files.
@@ -46,19 +46,15 @@
 #h: ... upload            : Upload changes to the site.
 #h: ... help-gph          : Print reference for `index.gph` files.
 #h: ... help-gmi          : Print reference for `FILE.gmi` files.
-#h:
-#h: ... hsh SSH DOMAIN    : Install and enable the three services in
-#h:                         remote machine.
-#h:
-#h: (Important) This script was only tested in `VOID Linux`.
-. hmain
-. hterm
-. hpkg
-. hlog
-. vrun
-. vcd
-. hfile
-. getsrc-git
+##:
+. hmain        # sh-hutil
+. hpkg         # sh-hutil
+. hlog         # sh-hutil
+. vrun         # sh-hutil
+. vcd          # sh-hutil
+. hfile        # sh-hutil
+. getsrc-git   # sh-getsrc
+. release-file # sh-release-file
 miniweb() {
     local cmd="$1"
     shift
@@ -70,71 +66,57 @@ miniweb() {
         upload)     miniweb_upload         ;;
         help-gph)   help_gph               ;;
         help-gmi)   help_gmi               ;;
-        open)       xdg-open gemini://localhost &
-                    xdg-open gopher://localhost &
-                    xdg-open http://localhost:8081 &
-                    ;;
-            
-        *) hlog error "Invalid argument: ${cmd}"; return 1;;
+        *)          hlog error "Invalid argument: ${cmd}"
+                    return 1;;
     esac
 }
 miniweb_show_variables() {
-    hterm vars                   \
-          MINIWEB_PERSONAL_SITE  \
-          MINIWEB_PERSONAL_SKEL  \
-          MINIWEB_PERSONAL_BUILD \
-          MINIWEB_TMPDIR         \
-          MINIWEB_PUBDIR         \
-          MINIWEB_PUBSSH         \
-          MINIWEB_HTTP_BIND      \
-          MINIWEB_PWD
+    printf '%-30s : %s\n' \
+           MINIWEB_PERSONAL_SITE  "${MINIWEB_PERSONAL_SITE}"  \
+           MINIWEB_PERSONAL_SKEL  "${MINIWEB_PERSONAL_SKEL}"  \
+           MINIWEB_PERSONAL_BUILD "${MINIWEB_PERSONAL_BUILD}" \
+           MINIWEB_HTTP_BIND      "${MINIWEB_HTTP_BIND}"      \
+           MINIWEB_PUBDIR         "${MINIWEB_PUBDIR}"         \
+           MINIWEB_REL_SITE       "${MINIWEB_REL_SITE}"
 }
 miniweb_calc_variables() {
     MINIWEB_PERSONAL_SITE="${MINIWEB_PERSONAL_SITE:-${HOME}/Documents/gopher}"
     MINIWEB_PERSONAL_SKEL="${MINIWEB_PERSONAL_SKEL:-}"
     MINIWEB_PERSONAL_BUILD="${MINIWEB_PERSONAL_BUILD:-}"
-    MINIWEB_TMPDIR="/tmp/miniweb-tmpdir"
-    MINIWEB_PUBDIR="/srv/miniweb"
-    MINIWEB_PUBSSH="${MINIWEB_PUBSSH}"
     MINIWEB_HTTP_BIND="${MINIWEB_HTTP_BIND:-127.0.0.1}"
-    MINIWEB_PWD="`pwd`"
+    MINIWEB_PUBDIR="/srv/miniweb"
+    MINIWEB_REL_SITE="tar-sudo::/src/miniweb"
 }
 
 
 ## -----------------------------------------------------------------------------
-miniweb_tar_install() {
-    sudo mkdir -p "${MINIWEB_PUBDIR}"
-    vcd + "${MINIWEB_TMPDIR}"
-    if test -n "${MINIWEB_PUBSSH}";then
-        hlog info "Uploading to ${MINIWEB_PUBSSH}:${MINIWEB_PUBDIR} ..."
-        tar c . | ssh "${MINIWEB_PUBSSH}" sudo tar xf - -C "${MINIWEB_PUBDIR}"
-    else
-        hlog info "Publishing locally ..."
-        tar c . | sudo tar xf - -C "${MINIWEB_PUBDIR}"
-    fi
-    vcd - "${MINIWEB_PWD}"
-}
-miniweb_tar_collect() {
-    local pwd="`pwd`"
+miniweb_upload() {
+    local pwd="`pwd`" tmp="`mktemp -d`" tmph="`mktemp`" f='' t=''
+    
     ## Check the source is right.
-    if test ! -d "${MINIWEB_PERSONAL_SITE}";then
+    if test ! -d "${MINIWEB_PERSONAL_SITE}"; then
         hlog error "Directory MINIWEB_PERSONAL_SITE=${MINIWEB_PERSONAL_SITE} does not exist."
         return 1
     fi
+
     ## Execute script.
     if test -n "${MINIWEB_PERSONAL_BUILD}";then
         eval "${MINIWEB_PERSONAL_BUILD}"
     fi
     
     ## Copy everything to a temporary directory.
-    rm -rf "${MINIWEB_TMPDIR}"
-    cp -r "${MINIWEB_PERSONAL_SITE}" "${MINIWEB_TMPDIR}"
+    rm -rf "${tmp}"
+    cp -r "${MINIWEB_PERSONAL_SITE}" "${tmp}"
+
     ## Enter temporary directory.
-    vcd + "${MINIWEB_TMPDIR}"
+    cd "${tmp}"
+    
     ## Create the `index.gmi` out of `index.gph`.
-    find . -iname index.gph | while read f;do
+    for f in `find . -iname index.gph`; do
+
         local t="`dirname "${f}"`/index.gmi"
-        hlog info "Creating ${t} ..."
+        hlog info "GEN ${t}"
+        
         sed '
         1s|^\([^#]\)|## \1|
         s/^t//
@@ -142,42 +124,56 @@ miniweb_tar_collect() {
         s/^\[1|\(.*\)|\(.*\)|server|port\]/=> \2\/ \1/
         s/^\[h|\(.*\)|URL:\(.*\)|server|port\]/=> \2 \1/
         ' "${f}" > "${t}"
+        
     done
+    
     ## Create the `index.html` from `index.gmi`.
-    if test ! -n "${MINIWEB_PERSONAL_SKEL}";then
-        hlog warning "Variable MINIWEB_PERSONAL_SKEL not defined."
-    elif ! which "mht" >/dev/null 2>&1;then
-        hlog error "Program 'mht' not found."
-        return 1
-    elif ! which "pandoc" >/dev/null 2>&1;then
-        hlog error "Program 'pandoc' not found."
-        return 1
+    if test ! -n "${MINIWEB_PERSONAL_SKEL}"; then
+       
+        hlog warning "Skipping HTML generation: MINIWEB_PERSONAL_SKEL not set."
+
+    elif ! which "pandoc" >/dev/null 2>&1; then
+         
+        hlog warning "Skipping HTML generation: Program 'pandoc' not found."
+
+    elif ! which "ftemplate" >/dev/null 2>&1; then
+
+        hlog warning "Skipping HTML generation: Program 'ftemplate' not found."
+        
     else
-        find . -iregex ".*\.gmi" | while read f;do
+
+        for f in `find . -iregex ".*\.gmi"`; do
+
             local t="`echo "${f}" | sed 's|\.gmi$|\.html|'`"
             local p="`echo "${t}" | sed 's|/index\.html$|/|'`"
-            hlog info "Creating ${t} ..."
+            
+            hlog info "GEN ${t}"
             sed '
             s|^ *=>  *\([^ ][^ ]*\)  *\([^ ]*\) - \(.*\)|+ [\2](\1) - \3|
             s|^ *=>  *\([^ ][^ ]*\)\.gmi  *\(.*\)|+ [\2](\1.html)|
             s|^ *=>  *\([^ ][^ ]*\.jpg\)  *\(.*\)|+ [\2](\1) (Photo)|
             s|^ *=>  *\([^ ][^ ]*\)  *\(.*\)|+ [\2](\1)|
-            ' "${f}" \
-                | pandoc -f markdown -t html \
-                | mht -s "${MINIWEB_PERSONAL_SKEL}" -t LOC="${p}" > "${t}"
+            ' "${f}" | pandoc -f markdown -t html > "${tmph}"
+
+            ftemplate < "${MINIWEB_PERSONAL_SKEL}" \
+                      > "${t}" \
+                      V:LOC="${p}" \
+                      V:BODY="`cat "${tmph}"`"
+            
         done
     fi
-    vcd - "${MINIWEB_PWD}"
+
+    ## Upload site.
+    release_file -v -s "${MINIWEB_REL_SITE}" *
+    
+    cd "${pwd}"
 }
-miniweb_upload() {
-    miniweb_tar_collect
-    miniweb_tar_install
-}
+
 
 
 ## -----------------------------------------------------------------------------
 geomyidae_install() {
-    local domain="$1" url="git://r-36.net/geomyidae" SCRNAME="${SCRNAME}: gopher"
+    local domain="$1" url="git://r-36.net/geomyidae" SCRNAME="${SCRNAME}: gopher" pwd="`pwd`"
     if test ! -e /usr/local/bin/geomyidae;then
         ## Install deps.
         hpkg -m "Installing build dependencies for 'geomyidae' ..." \
@@ -193,7 +189,7 @@ geomyidae_install() {
         make clean
         make              BINDIR=/usr/local/bin
         sudo make install BINDIR=/usr/local/bin
-        vcd - "${MINIWEB_PWD}"
+        vcd - "${pwd}"
     fi
     ## Create miniweb directory.
     if test ! -d "${MINIWEB_PUBDIR}";then
@@ -218,7 +214,7 @@ geomyidae_install() {
     fi
 }
 gmnisrv_install() {
-    local domain="$1" url="https://git.sr.ht/~sircmpwn/gmnisrv" SCRNAME="${SCRNAME}: gemini"
+    local domain="$1" url="https://git.sr.ht/~sircmpwn/gmnisrv" SCRNAME="${SCRNAME}: gemini" pwd="`pwd`"
     if test ! -f /usr/local/bin/gmnisrv;then
         ## Install deps.
         hpkg -m "Installing build dependencies for 'gmnisrv' ..." \
@@ -240,7 +236,7 @@ gmnisrv_install() {
         ../configure --prefix=/usr/local
         make
         sudo make install
-        vcd - "${MINIWEB_PWD}"
+        vcd - "${pwd}"
     fi
     ## Create gemini certificates directory.
     hlog info "/var/lib/gemini/certs/: Creating ..."
@@ -287,7 +283,7 @@ gmnisrv_install() {
     fi
 }
 quark_install() {
-    local url="https://git.suckless.org/quark" SCRNAME="${SCRNAME}: ht8081"
+    local url="https://git.suckless.org/quark" pwd="`pwd`" SCRNAME="${SCRNAME}: ht8081"
     ## Download and build quark.
     if test ! -f /usr/local/bin/quark;then
         hpkg -m "Installing build dependencies for quark ..." \
@@ -300,7 +296,7 @@ quark_install() {
         vcd + "`getsrc_git "${url}"`"
         make
         sudo make install
-        vcd - "${MINIWEB_PWD}"
+        vcd - "${pwd}"
     fi
     ## Create miniweb directory.
     if test ! -d "${MINIWEB_PUBDIR}";then
@@ -363,6 +359,6 @@ help_gmi() {
 
 ## -----------------------------------------------------------------------------
 miniweb_calc_variables
-hmain -f "miniweb" miniweb "$@"
+hmain -f "miniweb" -r "mktemp" miniweb "$@"
 
 
