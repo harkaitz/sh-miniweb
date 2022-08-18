@@ -43,7 +43,7 @@
 #h: ... i-gemini [DOMAIN] : Build/Install/Setup gmnisrv.   [gemini]
 #h: ... i-ht8081          : Build/Install/Setup quark.     [ht8081]
 #h:
-#h: ... upload            : Upload changes to the site.
+#h: ... upload|u          : Upload changes to the site.
 #h: ... help-gph          : Print reference for `index.gph` files.
 #h: ... help-gmi          : Print reference for `FILE.gmi` files.
 ##:
@@ -63,7 +63,7 @@ miniweb() {
         i-gopher)   geomyidae_install "$@" ;;
         i-gemini)   gmnisrv_install   "$@" ;;
         i-ht8081)   quark_install     "$@" ;;
-        upload)     miniweb_upload         ;;
+        upload|u)   miniweb_upload         ;;
         help-gph)   help_gph               ;;
         help-gmi)   help_gmi               ;;
         *)          hlog error "Invalid argument: ${cmd}"
@@ -84,8 +84,8 @@ miniweb_calc_variables() {
     MINIWEB_PERSONAL_SKEL="${MINIWEB_PERSONAL_SKEL:-}"
     MINIWEB_PERSONAL_BUILD="${MINIWEB_PERSONAL_BUILD:-}"
     MINIWEB_HTTP_BIND="${MINIWEB_HTTP_BIND:-127.0.0.1}"
-    MINIWEB_PUBDIR="/srv/miniweb"
-    MINIWEB_REL_SITE="tar-sudo::/src/miniweb"
+    MINIWEB_PUBDIR="${MINIWEB_PUBDIR:-/srv/miniweb}"
+    MINIWEB_REL_SITE="${MINIWEB_REL_SITE:-tar-sudo::/src/miniweb}"
 }
 
 
