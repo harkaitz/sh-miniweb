@@ -56,7 +56,7 @@
 . getsrc-git   # sh-getsrc
 . release-file # sh-release-file
 miniweb() {
-    local cmd="$1"
+    local cmd="$1" HLOG_NO_PREFIX=y
     shift
     case "${cmd}" in
         show)       miniweb_show_variables ;;
@@ -100,10 +100,12 @@ miniweb_upload() {
     fi
 
     ## Execute script.
-    if test -n "${MINIWEB_PERSONAL_BUILD}";then
+    if test -n "${MINIWEB_PERSONAL_BUILD}"; then
         eval "${MINIWEB_PERSONAL_BUILD}"
     fi
-    
+
+    hlog info "COPY ${tmp} <- ${MINIWEB_PERSONAL_SITE}"
+       
     ## Copy everything to a temporary directory.
     rm -rf "${tmp}"
     cp -r "${MINIWEB_PERSONAL_SITE}" "${tmp}"
@@ -112,6 +114,7 @@ miniweb_upload() {
     cd "${tmp}"
     
     ## Create the `index.gmi` out of `index.gph`.
+    
     for f in `find . -iname index.gph`; do
 
         local t="`dirname "${f}"`/index.gmi"
