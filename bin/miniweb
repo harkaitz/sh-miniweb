@@ -101,7 +101,7 @@ miniweb_upload() {
 
     ## Execute script.
     if test -n "${MINIWEB_PERSONAL_BUILD}"; then
-        eval "${MINIWEB_PERSONAL_BUILD}"
+        sh -e -c "${MINIWEB_PERSONAL_BUILD}"
     fi
 
     hlog info "COPY ${tmp} <- ${MINIWEB_PERSONAL_SITE}"
