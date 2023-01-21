@@ -3,7 +3,7 @@
 #L:  MIT License
 #L:  
 #l:  Bug reports, feature requests to gemini|https://harkadev.com/oss
-#l:  Copyright (c) 2022 Harkaitz Agirre, harkaitz.aguirre@gmail.com
+#l:  Copyright (c) 2023 Harkaitz Agirre, harkaitz.aguirre@gmail.com
 #L:
 #L:  Permission is hereby granted, free of charge, to any person obtaining
 #L:  a copy of this software and associated documentation files (the
@@ -42,8 +42,6 @@
 #h: ... i-gopher [DOMAIN] : Build/Install/Setup Geomyidae. [gopher]
 #h: ... i-gemini [DOMAIN] : Build/Install/Setup gmnisrv.   [gemini]
 #h: ... i-ht8081          : Build/Install/Setup quark.     [ht8081]
-#h:
-#h: ... upload|u          : Upload changes to the site.
 #h: ... help-gph          : Print reference for `index.gph` files.
 #h: ... help-gmi          : Print reference for `FILE.gmi` files.
 ##:
@@ -54,7 +52,6 @@
 . vcd          # sh-hutil
 . hfile        # sh-hutil
 . getsrc-git   # sh-getsrc
-. release-file # sh-release-file
 miniweb() {
     local cmd="$1" HLOG_NO_PREFIX=y
     shift
@@ -63,7 +60,6 @@ miniweb() {
         i-gopher)   geomyidae_install "$@" ;;
         i-gemini)   gmnisrv_install   "$@" ;;
         i-ht8081)   quark_install     "$@" ;;
-        upload|u)   miniweb_upload         ;;
         help-gph)   help_gph               ;;
         help-gmi)   help_gmi               ;;
         *)          hlog error "Invalid argument: ${cmd}"
@@ -71,110 +67,16 @@ miniweb() {
     esac
 }
 miniweb_show_variables() {
-    printf '%-30s : %s\n' \
-           MINIWEB_PERSONAL_SITE  "${MINIWEB_PERSONAL_SITE}"  \
-           MINIWEB_PERSONAL_SKEL  "${MINIWEB_PERSONAL_SKEL}"  \
-           MINIWEB_PERSONAL_BUILD "${MINIWEB_PERSONAL_BUILD}" \
-           MINIWEB_HTTP_BIND      "${MINIWEB_HTTP_BIND}"      \
-           MINIWEB_PUBDIR         "${MINIWEB_PUBDIR}"         \
-           MINIWEB_REL_SITE       "${MINIWEB_REL_SITE}"
+    cat <<-EOF
+	MINIWEB_HTTP_BIND      : ${MINIWEB_HTTP_BIND}
+	MINIWEB_PUBDIR         : ${MINIWEB_PUBDIR}
+	EOF
 }
 miniweb_calc_variables() {
-    MINIWEB_PERSONAL_SITE="${MINIWEB_PERSONAL_SITE:-${HOME}/Documents/gopher}"
-    MINIWEB_PERSONAL_SKEL="${MINIWEB_PERSONAL_SKEL:-}"
-    MINIWEB_PERSONAL_BUILD="${MINIWEB_PERSONAL_BUILD:-}"
     MINIWEB_HTTP_BIND="${MINIWEB_HTTP_BIND:-127.0.0.1}"
     MINIWEB_PUBDIR="${MINIWEB_PUBDIR:-/srv/miniweb}"
-    MINIWEB_REL_SITE="${MINIWEB_REL_SITE:-tar-sudo::/src/miniweb}"
 }
-
-
-## -----------------------------------------------------------------------------
-miniweb_upload() {
-    local pwd="`pwd`" tmp="`mktemp -d`" tmph="`mktemp`" f='' t=''
-    
-    ## Check the source is right.
-    if test ! -d "${MINIWEB_PERSONAL_SITE}"; then
-        hlog error "Directory MINIWEB_PERSONAL_SITE=${MINIWEB_PERSONAL_SITE} does not exist."
-        return 1
-    fi
-
-    ## Execute script.
-    if test -n "${MINIWEB_PERSONAL_BUILD}"; then
-        sh -e -c "${MINIWEB_PERSONAL_BUILD}"
-    fi
-
-    hlog info "COPY ${tmp} <- ${MINIWEB_PERSONAL_SITE}"
-       
-    ## Copy everything to a temporary directory.
-    rm -rf "${tmp}"
-    cp -r "${MINIWEB_PERSONAL_SITE}" "${tmp}"
-
-    ## Enter temporary directory.
-    cd "${tmp}"
-    
-    ## Create the `index.gmi` out of `index.gph`.
-    
-    for f in `find . -iname index.gph`; do
-
-        local t="`dirname "${f}"`/index.gmi"
-        hlog info "GEN ${t}"
-        
-        sed '
-        1s|^\([^#]\)|## \1|
-        s/^t//
-        s/^\[[09Ig]|\(.*\)|\(.*\)|server|port\]/=> \2 \1/
-        s/^\[1|\(.*\)|\(.*\)|server|port\]/=> \2\/ \1/
-        s/^\[h|\(.*\)|URL:\(.*\)|server|port\]/=> \2 \1/
-        ' "${f}" > "${t}"
-        
-    done
-    
-    ## Create the `index.html` from `index.gmi`.
-    if test ! -n "${MINIWEB_PERSONAL_SKEL}"; then
-       
-        hlog warning "Skipping HTML generation: MINIWEB_PERSONAL_SKEL not set."
-
-    elif ! which "pandoc" >/dev/null 2>&1; then
-         
-        hlog warning "Skipping HTML generation: Program 'pandoc' not found."
-
-    elif ! which "ftemplate" >/dev/null 2>&1; then
-
-        hlog warning "Skipping HTML generation: Program 'ftemplate' not found."
-        
-    else
-
-        for f in `find . -iregex ".*\.gmi"`; do
-
-            local t="`echo "${f}" | sed 's|\.gmi$|\.html|'`"
-            local p="`echo "${t}" | sed 's|/index\.html$|/|'`"
-            
-            hlog info "GEN ${t}"
-            sed '
-            s|^ *=>  *\([^ ][^ ]*\)  *\([^ ]*\) - \(.*\)|+ [\2](\1) - \3|
-            s|^ *=>  *\([^ ][^ ]*\)\.gmi  *\(.*\)|+ [\2](\1.html)|
-            s|^ *=>  *\([^ ][^ ]*\.jpg\)  *\(.*\)|+ [\2](\1) (Photo)|
-            s|^ *=>  *\([^ ][^ ]*\)  *\(.*\)|+ [\2](\1)|
-            ' "${f}" | pandoc -f markdown -t html > "${tmph}"
-
-            ftemplate < "${MINIWEB_PERSONAL_SKEL}" \
-                      > "${t}" \
-                      V:LOC="${p}" \
-                      V:BODY="`cat "${tmph}"`"
-            
-        done
-    fi
-
-    ## Upload site.
-    release_file -v -s "${MINIWEB_REL_SITE}" *
-    
-    cd "${pwd}"
-}
-
-
-
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------
 geomyidae_install() {
     local domain="$1" url="git://r-36.net/geomyidae" SCRNAME="${SCRNAME}: gopher" pwd="`pwd`"
     if test ! -e /usr/local/bin/geomyidae;then
@@ -317,8 +219,7 @@ quark_install() {
 	EOF
     fi
 }
-
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------
 help_gph() {
     cat <<-EOF
 	1 comment
@@ -358,9 +259,7 @@ help_gmi() {
 	- Quote lines          : >
 	EOF
 }
-
-
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------
 miniweb_calc_variables
 hmain -f "miniweb" -r "mktemp" miniweb "$@"
 

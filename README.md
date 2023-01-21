@@ -12,6 +12,25 @@ Personal website maintenance script.
 
 ## Help
 
+gmi2md
+
+    Usage: gmi2md [<] GMI-FILE > MD-FILE
+    
+    Convert from a Gemini markdown format to Github markdown format.
+
+gph2gmi
+
+    Usage: gph2gmi [< GPH] > GEMINI
+    
+    Convert Gopher files to Gemini markdown format.
+
+md2html
+
+    Usage: md2html [-t NAME][-s SKEL] < MD-FILE > HTML-FILE
+    
+    Conver a markdown file to HTML format using `ftemplate`
+    and `pandoc`.
+
 miniweb
 
     Usage: miniweb ...
@@ -32,8 +51,6 @@ miniweb
     ... i-gopher [DOMAIN] : Build/Install/Setup Geomyidae. [gopher]
     ... i-gemini [DOMAIN] : Build/Install/Setup gmnisrv.   [gemini]
     ... i-ht8081          : Build/Install/Setup quark.     [ht8081]
-    
-    ... upload|u          : Upload changes to the site.
     ... help-gph          : Print reference for `index.gph` files.
     ... help-gmi          : Print reference for `FILE.gmi` files.
 
