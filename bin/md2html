@@ -24,7 +24,7 @@
 #L:  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 #L:  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ##:
-#h: Usage: $0 [-t NAME][-s SKEL] < MD-FILE > HTML-FILE
+#h: Usage: $0 [-t NAME][-s SKEL] [V:VAR=VAL ...] < MD-FILE > HTML-FILE
 #h:
 #h: Conver a markdown file to HTML format using `ftemplate`
 #h: and `pandoc`.
@@ -42,7 +42,7 @@ md2html() {
     shift $(( $OPTIND - 1 ))
     ## Convert to html.
     if test -n "$skel"; then
-        ftemplate < "$skel" V:LOC="${name}" V:BODY="`pandoc -f markdown -t html`"
+        ftemplate < "$skel" V:LOC="${name}" V:BODY="`ftemplate "$@" | pandoc -f markdown -t html`" "$@"
     else
         pandoc -f markdown -t html
     fi
