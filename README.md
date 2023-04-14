@@ -26,7 +26,7 @@ gph2gmi
 
 md2html
 
-    Usage: md2html [-t NAME][-s SKEL] < MD-FILE > HTML-FILE
+    Usage: md2html [-t NAME][-s SKEL] [V:VAR=VAL ...] < MD-FILE > HTML-FILE
     
     Conver a markdown file to HTML format using `ftemplate`
     and `pandoc`.
@@ -61,4 +61,3 @@ one of the following links:
 
 1. [gemini://harkadev.com/oss/](gemini://harkadev.com/oss/)
 2. [https://harkadev.com/oss/](https://harkadev.com/oss/)
-
