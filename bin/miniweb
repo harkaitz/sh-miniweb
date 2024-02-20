@@ -1,236 +1,145 @@
 #!/bin/sh -e
-#L:  MIT License
-#L:
-#l:  Copyright (c) 2023 Harkaitz Agirre, harkaitz.aguirre@gmail.com
-#L:
-#L:  Permission is hereby granted, free of charge, to any person obtaining a copy
-#L:  of this software and associated documentation files (the "Software"), to deal
-#L:  in the Software without restriction, including without limitation the rights
-#L:  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-#L:  copies of the Software, and to permit persons to whom the Software is
-#L:  furnished to do so, subject to the following conditions:
-#L:
-#L:  The above copyright notice and this permission notice shall be included in all
-#L:  copies or substantial portions of the Software.
-#L:
-#L:  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#L:  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#L:  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-#L:  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#L:  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-#L:  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-#L:  SOFTWARE.
 ##:
-#h: Usage: $0 ...
+#h: Usage: miniweb ...
 #h:
-#h: This script helps performing two tasks:
+#h: Download, build and install an HTTP and a Gemini server.
 #h:
-#h: 1.- Downloads, builds and installs three web services and
-#h:     configures them to serve from the same directory.
-#h:     - `Gopher RFC-1436 TCP 70`  : Geomyidae
-#h:     - `Gemini TLS 1965`         : gmnisrv
-#h:     - `HTTP TCP 127.0.0.1:8081` : quark
+#h: ... show            : Show configuration.
+#h: ... i-http          : Install "quark" http server (tcp:127.0.0.1:8081).
+#h: ... i-gemini        : Install "gmnisrv" gemini server (tls:0.0.0.0:1965).
+#h: ... c-gemini DOMAIN : Configure gemini to service domain.
+#h: ... h-gemini        : Print help about .gmi format.
 #h:
-#h: 2.- Gets the files from your *personal webpage directory* and
-#h:     generates html files from `.gmi`, `.gph`, `.md` files.
-#h:
-#h: ... show              : Show configuration.
-#h:
-#h: ... i-gopher [DOMAIN] : Build/Install/Setup Geomyidae. [gopher]
-#h: ... i-gemini [DOMAIN] : Build/Install/Setup gmnisrv.   [gemini]
-#h: ... i-ht8081          : Build/Install/Setup quark.     [ht8081]
-#h: ... help-gph          : Print reference for `index.gph` files.
-#h: ... help-gmi          : Print reference for `FILE.gmi` files.
+#h: Environment variables: MINIWEB_{HTTP_BIND,PUBDIR,REPO}
 ##:
-. hmain        # sh-hutil
-. hpkg         # sh-hutil
-. hlog         # sh-hutil
-. vrun         # sh-hutil
-. vcd          # sh-hutil
-. hfile        # sh-hutil
-. getsrc-git   # sh-getsrc
 miniweb() {
-    local cmd="$1" HLOG_NO_PREFIX=y
+    local cmd="$1"
     shift
     case "${cmd}" in
         show)       miniweb_show_variables ;;
-        i-gopher)   geomyidae_install "$@" ;;
-        i-gemini)   gmnisrv_install   "$@" ;;
-        i-ht8081)   quark_install     "$@" ;;
-        help-gph)   help_gph               ;;
-        help-gmi)   help_gmi               ;;
-        *)          hlog error "Invalid argument: ${cmd}"
-                    return 1;;
+        i-gemini)   gmnisrv_install        ;;
+        i-http)     quark_install          ;;
+        c-gemini)   gmnisrv_configure "$@" ;;
+        h-hemini)   gemini_help            ;;
+        *)          echo >&2 "error: Invalid argument: ${cmd}"; return 1;;
     esac
 }
 miniweb_show_variables() {
     cat <<-EOF
-	MINIWEB_HTTP_BIND      : ${MINIWEB_HTTP_BIND}
-	MINIWEB_PUBDIR         : ${MINIWEB_PUBDIR}
+	MINIWEB_HTTP_BIND : ${MINIWEB_HTTP_BIND}
+	MINIWEB_PUBDIR    : ${MINIWEB_PUBDIR}
+	MINIWEB_REPO      : ${MINIWEB_REPO}
 	EOF
 }
 miniweb_calc_variables() {
     MINIWEB_HTTP_BIND="${MINIWEB_HTTP_BIND:-127.0.0.1}"
     MINIWEB_PUBDIR="${MINIWEB_PUBDIR:-/srv/miniweb}"
+    MINIWEB_REPO="${MINIWEB_REPO:-https://github.com/harkaitz/sh-hpkg/releases/download/last}"
 }
 ## -------------------------------------------------------------------
-geomyidae_install() {
-    local domain="$1" url="git://r-36.net/geomyidae" SCRNAME="${SCRNAME}: gopher" pwd="`pwd`"
-    if test ! -e /usr/local/bin/geomyidae;then
-        ## Install deps.
-        hpkg -m "Installing build dependencies for 'geomyidae' ..." \
-             -w "/usr/include/tls.h" \
-             -w "git"                \
-             -w "make"               \
-             -w "gcc"                \
-             -i                      \
-             %xbps "libtls-devel" "git" "make" "gcc"
-        ## Build and install.
-        hlog info "Downloading, building and installing 'geomyidae' ..."
-        vcd + "`getsrc_git "${url}"`"
-        make clean
-        make              BINDIR=/usr/local/bin
-        sudo make install BINDIR=/usr/local/bin
-        vcd - "${pwd}"
-    fi
-    ## Create miniweb directory.
-    if test ! -d "${MINIWEB_PUBDIR}";then
-        hlog info "${MINIWEB_PUBDIR}/: Creating ..."
-        sudo mkdir -p "${MINIWEB_PUBDIR}"
-    fi
-    ## Install service.
-    if test -d /etc/sv;then
-        local args=
-        hlog info "/etc/sv/gopher/run: Creating ..."
-        if test -n "${domain}";then
-            hlog info "/etc/sv/gopher/run: ${domain}->${MINIWEB_PUBDIR}"
-            local args="-h ${domain}"
-        else
-            hlog info "/etc/sv/gopher/run: `uname -n`->${MINIWEB_PUBDIR}"
-        fi
-        sudo mkdir -p /etc/sv/gopher
-        hfile wrapper sudo /etc/sv/gopher/run <<-EOF
-	#!/bin/sh
-	exec /usr/local/bin/geomyidae -d ${args} -b "${MINIWEB_PUBDIR}"
-	EOF
-    fi
-}
 gmnisrv_install() {
-    local domain="$1" url="https://git.sr.ht/~sircmpwn/gmnisrv" SCRNAME="${SCRNAME}: gemini" pwd="`pwd`"
-    if test ! -f /usr/local/bin/gmnisrv;then
-        ## Install deps.
-        hpkg -m "Installing build dependencies for 'gmnisrv' ..." \
-             -w "git"                        \
-             -w "make"                       \
-             -w "gcc"                        \
-             -w "/usr/include/openssl/ssl.h" \
-             -w "scdoc"                      \
-             -w "pkg-config"                 \
-             -w "/etc/mime.types"            \
-             -i                              \
-             %xbps "git" "make" "gcc" "openssl-devel" "scdoc" "pkg-config" "mime-types"
-        ## Build and install
-        hlog info "Downloading, building and installing 'gmnisrv' ..."
-        vcd + "`getsrc_git "${url}"`"
-        rm -rf build
-        mkdir -p build
-        cd build
-        ../configure --prefix=/usr/local
-        make
-        sudo make install
-        vcd - "${pwd}"
+    ##
+    echo "Downloading and installing 'gmnisrv' ..."
+    if test ! -f /usr/local/bin/gmnisrv; then
+        local url="${MINIWEB_REPO}/gminisrv--$(uname -s)-$(uname -m).tar.gz"
+        local tar="${TEMP:-/tmp}/$(basename "${url}")"
+        if test ! -e "${tar}"; then
+            wget -O "${tar}.tmp" "${url}"
+            mv -v "${tar}.tmp" "${tar}"
+        fi
+        sudo tar xfv "${tar}" -C / -h -o -m --no-same-permissions
     fi
-    ## Create gemini certificates directory.
-    hlog info "/var/lib/gemini/certs/: Creating ..."
+    
+    ##
+    echo "Creating '/var/lib/gemini/certs/' ..."
     sudo mkdir -p "/var/lib/gemini/certs"
-    ## Create configuration file.
-    if test ! -f /etc/gmnisrv.ini;then
-        hlog info "/etc/gmnisrv.ini: Creating ..."
-        hfile create sudo /etc/gmnisrv.ini <<-EOF
+    
+    ##
+    echo "Creating '/etc/gmnisrv.ini' ..."
+    if test ! -f /etc/gmnisrv.ini; then
+        sudo tee /etc/gmnisrv.ini <<-EOF >/dev/null
 	listen=0.0.0.0:1965 [::]:1965
 	[:tls]
 	store=/var/lib/gemini/certs
 	organization=gemini
 	EOF
     fi
-    ## Install service.
-    if test -d /etc/sv;then
-        hlog info "/etc/sv/gemini/run: Creating ..."
-        sudo mkdir -p /etc/sv/gemini
-        hfile wrapper sudo /etc/sv/gemini/run <<-EOF
+    
+    ##
+    echo "Creating '/etc/sv/gemini/run' ..."
+    sudo mkdir -p /etc/sv/gemini
+    sudo tee /etc/sv/gemini/run <<-EOF >/dev/null
 	#!/bin/sh
 	exec /usr/local/bin/gmnisrv -C /etc/gmnisrv.ini
 	EOF
-    fi
-    ## Create miniweb directory.
-    if test ! -d "${MINIWEB_PUBDIR}";then
-        hlog info "${MINIWEB_PUBDIR}: Creating ..."
+    sudo chmod +x /etc/sv/gemini/run
+    ##
+    echo "Creating '${MINIWEB_PUBDIR}' ..."
+    if test ! -d "${MINIWEB_PUBDIR}"; then
         sudo mkdir -p "${MINIWEB_PUBDIR}"
     fi
-    ## Create gemini.
-    hlog info "/etc/gmnisrv.ini: `uname -n`->${MINIWEB_PUBDIR}"
-    hlog info "/etc/gmnisrv.ini: localhost->${MINIWEB_PUBDIR}"
-    hfile fadd sudo /etc/gmnisrv.ini gopher <<-EOF
+    
+    ##
+    echo "Creating '/etc/gmnisrv.ini' ..."
+    echo "Binding [localhost] to '${MINIWEB_PUBDIR}' ..."
+    if test -e /etc/gmnisrv.ini; then
+        sudo sed -i '/-- gopher --/,/-- gopher --/d' /etc/gmnisrv.ini
+    fi
+    sudo tee -a /etc/gmnisrv.ini <<-EOF >/dev/null
+	## -- gopher --
 	[localhost]
 	root=${MINIWEB_PUBDIR}
 	[`uname -n`]
 	root=${MINIWEB_PUBDIR}
+	## -- gopher --
 	EOF
-    if test -n "${domain}";then
-        hlog info "/etc/gmnisrv.ini: ${domain}->${MINIWEB_PUBDIR}"
-        hfile fadd sudo /etc/gmnisrv.ini domain <<-EOF
+}
+gmnisrv_configure() {
+    local domain="$1"
+    if test ! -n "${domain}"; then
+        echo >&2 "error: Please specify a domain name."
+        return 1
+    fi
+    echo "Editing '/etc/gmnisrv.ini' ..."
+    echo "Binding [${domain}] to '${MINIWEB_PUBDIR}' ..."
+    sudo sed -i '/-- domain --/,/-- domain --/d' /etc/gmnisrv.ini
+    sudo tee -a /etc/gmnisrv.ini <<-EOF >/dev/null
+	## -- domain --
 	[${domain}]
 	root=${MINIWEB_PUBDIR}
+	## -- domain --
 	EOF
-    fi
 }
+## -------------------------------------------------------------------
 quark_install() {
-    local url="https://git.suckless.org/quark" pwd="`pwd`" SCRNAME="${SCRNAME}: ht8081"
-    ## Download and build quark.
-    if test ! -f /usr/local/bin/quark;then
-        hpkg -m "Installing build dependencies for quark ..." \
-             -w "git"        \
-             -w "make"       \
-             -w "gcc"        \
-             -w "pkg-config" \
-             -i              \
-             %xbps "git" "make" "gcc" "pkg-config"
-        vcd + "`getsrc_git "${url}"`"
-        make
-        sudo make install
-        vcd - "${pwd}"
+    ##
+    echo "Downloading and installing 'quark' ..."
+    if test ! -f /usr/local/bin/quark; then
+        local url="${MINIWEB_REPO}/quark--$(uname -s)-$(uname -m).tar.gz"
+        local tar="${TEMP:-/tmp}/$(basename "${url}")"
+        if test ! -e "${tar}"; then
+            wget -O "${tar}.tmp" "${url}"
+            mv -v "${tar}.tmp" "${tar}"
+        fi
+        sudo tar xfv "${tar}" -C / -h -o -m --no-same-permissions
     fi
-    ## Create miniweb directory.
-    if test ! -d "${MINIWEB_PUBDIR}";then
-        hlog info "${MINIWEB_PUBDIR}/: Creating..."
-        sudo mkdir -p "${MINIWEB_PUBDIR}"
-    fi
-    ## Install service.
-    if test -d /etc/sv;then
-        hlog info "/etc/sv/ht8081/run: Creating service ..."
-        hlog info "/etc/sv/ht8081/run: ${MINIWEB_HTTP_BIND}:8081->${MINIWEB_PUBDIR}"
-        sudo mkdir -p /etc/sv/ht8081
-        hfile wrapper sudo /etc/sv/ht8081/run <<-EOF
+    
+    ##
+    echo "Creating '${MINIWEB_PUBDIR}/' ..."
+    sudo mkdir -p "${MINIWEB_PUBDIR}"
+    
+    ##
+    echo "Creating '/etc/sv/ht8081/run' ..."
+    echo "Will bind [${MINIWEB_HTTP_BIND}:8081] to '${MINIWEB_PUBDIR}' ..."
+    sudo mkdir -p /etc/sv/ht8081
+    sudo tee /etc/sv/ht8081/run <<-EOF >/dev/null
 	#!/bin/sh
 	exec /usr/local/bin/quark -p 8081 -h ${MINIWEB_HTTP_BIND} -d ${MINIWEB_PUBDIR}
 	EOF
-    fi
+    sudo chmod +x /etc/sv/ht8081/run
 }
 ## -------------------------------------------------------------------
-help_gph() {
-    cat <<-EOF
-	1 comment
-	2 tcomment
-	3 [1|R-36|/|server|port]
-	4 [0|file - comment|/file.txt|server|port]
-	5 [h|http://www.heise.de|URL:http://www.heise.de|server|port]
-	6 [0|some \| escape and [ special characters ] test|error|server|port]
-	7 [9|binary data file|/file.dat|server|port]
-	8 [|empty type||server|port]
-	9 some	invalid line
-	EOF
-}
-help_gmi() {
+gemini_help() {
     cat <<-EOF
 	# Gemini text format.
 	
@@ -258,6 +167,11 @@ help_gmi() {
 }
 ## -------------------------------------------------------------------
 miniweb_calc_variables
-hmain -f "miniweb" -r "mktemp" miniweb "$@"
+if test @"$(basename "$0")" = @"miniweb";then
+    case "${1}" in
+        ''|-h|--help) sed -n 's/^ *#h: \{0,1\}//p' "$0";;
+        *)            miniweb "$@"; exit 0             ;;
+    esac
+fi
 
 

@@ -28,31 +28,21 @@ md2html
 
     Usage: md2html [-t NAME][-s SKEL] [V:VAR=VAL ...] < MD-FILE > HTML-FILE
     
-    Conver a markdown file to HTML format using `ftemplate`
-    and `pandoc`.
+    Conver a markdown file to HTML format using `ftemplate` and `pandoc`.
 
 miniweb
 
     Usage: miniweb ...
     
-    This script helps performing two tasks:
+    Download, build and install an HTTP and a Gemini server.
     
-    1.- Downloads, builds and installs three web services and
-        configures them to serve from the same directory.
-        - `Gopher RFC-1436 TCP 70`  : Geomyidae
-        - `Gemini TLS 1965`         : gmnisrv
-        - `HTTP TCP 127.0.0.1:8081` : quark
+    ... show            : Show configuration.
+    ... i-http          : Install "quark" http server (tcp:127.0.0.1:8081).
+    ... i-gemini        : Install "gmnisrv" gemini server (tls:0.0.0.0:1965).
+    ... c-gemini DOMAIN : Configure gemini to service domain.
+    ... h-gemini        : Print help about .gmi format.
     
-    2.- Gets the files from your *personal webpage directory* and
-        generates html files from `.gmi`, `.gph`, `.md` files.
-    
-    ... show              : Show configuration.
-    
-    ... i-gopher [DOMAIN] : Build/Install/Setup Geomyidae. [gopher]
-    ... i-gemini [DOMAIN] : Build/Install/Setup gmnisrv.   [gemini]
-    ... i-ht8081          : Build/Install/Setup quark.     [ht8081]
-    ... help-gph          : Print reference for `index.gph` files.
-    ... help-gmi          : Print reference for `FILE.gmi` files.
+    Environment variables: MINIWEB_{HTTP_BIND,PUBDIR,REPO}
 
 ## Collaboration
 
