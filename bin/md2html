@@ -6,7 +6,7 @@
 ##:
 md2html() {
     ## Parse command line arguments.
-    local OPTIND optopt name='' skel=''
+    local OPTIND=1 optopt name='' skel=''
     while getopts "t:s:" optopt; do
         case $optopt in
             t)  name="${OPTARG}";;
